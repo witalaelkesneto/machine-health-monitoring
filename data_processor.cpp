@@ -81,9 +81,45 @@ void alarmInactivity()
         std::string sensor_id = key.second;
         auto duration2 = std::chrono::steady_clock::now() - value;
         auto durationSeconds = std::chrono::duration_cast<std::chrono::seconds>(duration2).count();
-        if(durationSeconds > frequency){
+        if (durationSeconds > frequency)
+        {
             post_metric(machine_id, ".alarms.inactive" + sensor_id, unixTimestamp(now), 1);
-        }  
+        }
+    }
+}
+
+std::map<std::pair<std::string, std::string>, std::deque<int>> lastRecords;
+
+double moveAverage(const std::string &machine_id, const std::string &sensor_id, int value)
+{
+    auto &record = lastRecords[{machine_id, sensor_id}];
+    record.push_back(value);
+    if (record.size() > 5){
+        record.pop_front();
+    }
+    double sum = accumulate(record.begin(), record.end(), 0.0);
+    return sum / record.size();
+}
+
+void customProcessing(const std::string &machine_id, const std::string &sensor_id, int value)
+{
+    time_t now = time(nullptr);
+    double moving_average = moveAverage(machine_id, sensor_id, value);
+    double limit = 0.0;
+    if (sensor_id == "cpu")
+    {
+        limit = 10;
+    }
+    else if (sensor_id == "ram")
+    {
+        limit = 200000000;
+    }
+    if (moving_average > limit)
+    {
+        std::string alarmPath= machine_id + ".alarms.high_moving_average." + sensor_id;
+        std::string message = alarmPath + " 1 " + unixTimestamp(time(nullptr)) + "\n";
+        connectDatabase(message);
+        post_metric(machine_id, "alarms.move_average." + sensor_id, unixTimestamp(now), 1);
     }
 }
 
