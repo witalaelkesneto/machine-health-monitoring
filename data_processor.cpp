@@ -147,6 +147,8 @@ int main(int argc, char *argv[])
             std::cout << message << std::endl;
 
             post_metric(machine_id, sensor_id, timestamp, value);
+            updateRegister(machine_id, sensor_id);
+            customProcessing(machine_id, sensor_id, value);
         }
 
         void connection_lost(const std::string &cause) override
