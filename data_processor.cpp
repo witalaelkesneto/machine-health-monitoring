@@ -106,8 +106,19 @@ int main(int argc, char *argv[])
             std::string sensor_id = topic_parts[3];
             std::string timestamp = j["timestamp"];
             int value = j["value"];
-            post_metric(machine_id, sensor_id, timestamp, value);
+
+            std::string message = machine_id + "/" + sensor_id + "/" + timestamp + "/" + std::to_string(value);
+            std::cout << message << std::endl;
+
+            //post_metric(machine_id, sensor_id, timestamp, value);
         }
+
+        void connection_lost(const std::string &cause) override
+        {
+            std::cerr << "Connection lost: " << cause << std::endl;
+        }
+
+        void delivery_complete(mqtt::delivery_token_ptr token) override {}
     };
 
     callback cb;
@@ -120,10 +131,13 @@ int main(int argc, char *argv[])
 
     try
     {
-        client.connect(connOpts);
-        client.subscribe("/sensors/#", QOS);
+        std::cout << "Connecting to the MQTT broker at " << BROKER_ADDRESS << "..." << std::endl;
+        client.connect(connOpts)->wait();
+        std::cout << "Connected to the MQTT broker." << std::endl;
+        client.subscribe("/sensors/#", QOS)->wait();
+        std::cout << "Subscribed to topic /sensors/#." << std::endl;
     }
-    catch (mqtt::exception &e)
+    catch (const mqtt::exception &e)
     {
         std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;

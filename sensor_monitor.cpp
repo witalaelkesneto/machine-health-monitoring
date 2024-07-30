@@ -95,7 +95,7 @@ void sensorData(const std::string &machine_id, const Sensor &sensor, mqtt::clien
 
     while (true)
     {
-        int value;
+        int value = 0;
 
         if (sensor.id == "ram")
         {
@@ -125,6 +125,12 @@ void sensorData(const std::string &machine_id, const Sensor &sensor, mqtt::clien
 
 int main(int argc, char *argv[])
 {
+    if (argc < 3)
+    {
+        std::cerr << "Usage: " << argv[0] << " <interval> <sensor_interval>" << std::endl;
+        return EXIT_FAILURE;
+    }
+
     std::string clientId = "sensor-monitor";
     mqtt::client client(BROKER_ADDRESS, clientId);
 
@@ -152,14 +158,16 @@ int main(int argc, char *argv[])
     sensors.push_back(Sensor{"cpu", "int", std::atoi(argv[2])});
     sensors.push_back(Sensor{"ram", "int", std::atoi(argv[2])});
 
-    std::thread t1(periodicalMessage, machineId, sensors, client, argv[1]);
+    std::thread t1(periodicalMessage, machineId, sensors, std::ref(client), std::atoi(argv[1]));
 
     std::vector<std::thread> threads;
-    for(auto &sensor : sensors){
-        threads.emplace_back(sensorData, machineId, sensor, client);
+    for (auto &sensor : sensors)
+    {
+        threads.emplace_back(sensorData, machineId, sensor, std::ref(client));
     }
 
-    for (auto &thread : threads){
+    for (auto &thread : threads)
+    {
         thread.join();
     }
 
