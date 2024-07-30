@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
             std::string message = machine_id + "/" + sensor_id + "/" + timestamp + "/" + std::to_string(value);
             std::cout << message << std::endl;
 
-            //post_metric(machine_id, sensor_id, timestamp, value);
+            post_metric(machine_id, sensor_id, timestamp, value);
         }
 
         void connection_lost(const std::string &cause) override
