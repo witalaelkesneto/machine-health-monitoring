@@ -7,12 +7,11 @@
 #include "json.hpp"      // json handling
 #include "mqtt/client.h" // paho mqtt
 #include <iomanip>
-#include "sys/types.h"
-#include "sys/sysinfo.h"
 #include <fstream>
 #include <string>
 #include <sstream>
 #include <vector>
+#include <curl/curl.h>
 
 #define QOS 1
 #define BROKER_ADDRESS "tcp://localhost:1883"
@@ -27,39 +26,46 @@ struct Sensor
     long interval;
 };
 
-int getRAM()
-{
-    struct sysinfo memInfo;
-    sysinfo(&memInfo);
-    int usedRAM = memInfo.totalram - memInfo.freeram;
-
-    usedRAM *= memInfo.mem_unit;
-    return usedRAM;
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
 }
 
-double getCPU()
+json callAPI(){
+    CURL* curl;
+    CURLcode res;
+    std::string readBuffer;
+    
+    curl = curl_easy_init();
+    if(curl) {
+        std::string url = "http://api.openweathermap.org/data/2.5/weather?lat=-19.9034387508784&lon=-43.92571570405504&appid=cd7a6eb0ae1ae79f393f3f245e09df51&units=metric";
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        res = curl_easy_perform(curl);
+        if(res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        }
+        curl_easy_cleanup(curl);
+    }
+
+    return nlohmann::json::parse(readBuffer);
+}
+
+int getHumidity()
 {
-    std::ifstream file("/proc/stat");
-    std::string line;
-    getline(file, line);
-    file.close();
+    json data = callAPI();
+    int humidity = data["main"]["humidity"];
+    
+    return humidity;
+}
 
-    std::istringstream ss(line);
-    std::string cpu;
-    long user, nice, system, idle;
-    ss >> cpu >> user >> nice >> system >> idle;
-
-    static long prevTotal = 0, prevIdle = 0;
-    long total = user + nice + system + idle;
-    long idleDelta = idle - prevIdle;
-    long totalDelta = total - prevTotal;
-
-    double cpuUsage = (1.0 - static_cast<double>(idleDelta) / totalDelta) * 100.0;
-
-    prevTotal = total;
-    prevIdle = idle;
-
-    return cpuUsage;
+double getTemperature()
+{
+    json data = callAPI();
+    double temp = data["main"]["temp"];
+    
+    return temp;
 }
 
 void initialMessage(const std::string &machine_id, const std::vector<Sensor> &sensors, mqtt::client &client)
@@ -76,8 +82,9 @@ void initialMessage(const std::string &machine_id, const std::vector<Sensor> &se
         jsonSensors.push_back(jsonSensor);
     }
     message["sensors"] = jsonSensors;
-    mqtt::message initialMessage(TOPIC_SENSOR_MONITOR, message.dump(), QOS, false);
+    mqtt::message initialMessage(TOPIC_SENSOR_MONITOR, message.dump(), QOS, false); 
     client.publish(initialMessage);
+    std::cout << "Initial Message: " + message.dump() << std::endl;
 }
 
 void periodicalMessage(const std::string &machine_id, const std::vector<Sensor> &sensors, mqtt::client &client, int interval)
@@ -95,15 +102,15 @@ void sensorData(const std::string &machine_id, const Sensor &sensor, mqtt::clien
 
     while (true)
     {
-        int value = 0;
+        double value = 0;
 
-        if (sensor.id == "ram")
+        if (sensor.id == "humidity")
         {
-            value = getRAM();
+            value = getHumidity();
         }
-        if (sensor.id == "cpu")
+        if (sensor.id == "temperature")
         {
-            value = getCPU();
+            value = getTemperature();
         }
         auto now = std::chrono::system_clock::now();
         std::time_t now_c = std::chrono::system_clock::to_time_t(now);
@@ -118,6 +125,8 @@ void sensorData(const std::string &machine_id, const Sensor &sensor, mqtt::clien
 
         mqtt::message message(topic, jsonData.dump(), QOS, false);
         client.publish(message);
+
+        std::cout << "Data Message: " + jsonData.dump() << std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(sensor.interval));
     }
@@ -155,8 +164,8 @@ int main(int argc, char *argv[])
     std::string machineId(hostname);
 
     std::vector<Sensor> sensors;
-    sensors.push_back(Sensor{"cpu", "int", std::atoi(argv[2])});
-    sensors.push_back(Sensor{"ram", "int", std::atoi(argv[2])});
+    sensors.push_back(Sensor{"humidity", "int", std::atoi(argv[2])});
+    sensors.push_back(Sensor{"temperature", "double", std::atoi(argv[2])});
 
     std::thread t1(periodicalMessage, machineId, sensors, std::ref(client), std::atoi(argv[1]));
 

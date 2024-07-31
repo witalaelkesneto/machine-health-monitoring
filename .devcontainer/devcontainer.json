@@ -2,6 +2,7 @@
 	"name": "C++",
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "app",
+	"workspaceFolder": "/workspace",
 	"customizations": {
 		"vscode": {
 			"settings": {
@@ -18,7 +19,8 @@
 	"forwardPorts": [
 		27017,
 		3001,
-		8080
+		8080,
+		3000
 	],
 	"postStartCommand": "sudo systemctl start mosquitto",
 	"mounts": [

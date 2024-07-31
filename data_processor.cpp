@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "json.hpp"
 #include "mqtt/client.h"
+#include "mqtt/async_client.h"
 #include <boost/asio.hpp>
 #include <string>
 #include <map>
@@ -106,19 +107,16 @@ void customProcessing(const std::string &machine_id, const std::string &sensor_i
     time_t now = time(nullptr);
     double moving_average = moveAverage(machine_id, sensor_id, value);
     double limit = 0.0;
-    if (sensor_id == "cpu")
+    if (sensor_id == "humidity")
     {
-        limit = 10;
+        limit = 60;
     }
-    else if (sensor_id == "ram")
+    else if (sensor_id == "temperature")
     {
-        limit = 200000000;
+        limit = 24;
     }
-    if (moving_average > limit)
+    if (moving_average < limit)
     {
-        std::string alarmPath= machine_id + ".alarms.high_moving_average." + sensor_id;
-        std::string message = alarmPath + " 1 " + unixTimestamp(time(nullptr)) + "\n";
-        connectDatabase(message);
         post_metric(machine_id, "alarms.move_average." + sensor_id, unixTimestamp(now), 1);
     }
 }
@@ -141,10 +139,10 @@ int main(int argc, char *argv[])
             std::string machine_id = topic_parts[2];
             std::string sensor_id = topic_parts[3];
             std::string timestamp = j["timestamp"];
-            int value = j["value"];
+            double value = j["value"];
 
             std::string message = machine_id + "/" + sensor_id + "/" + timestamp + "/" + std::to_string(value);
-            std::cout << message << std::endl;
+            std::cout << "Message Received: " + message << std::endl;
 
             post_metric(machine_id, sensor_id, timestamp, value);
             updateRegister(machine_id, sensor_id);
